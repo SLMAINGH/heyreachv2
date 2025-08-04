@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HeyReach Conversation Dashboard V2 (Optimized)</title>
+    <title>HeyReach Conversation Dashboard V2 (Optimized + Rate Limit)</title>
     <style>
         body { font-family: sans-serif; margin: 2em; }
         div { margin-bottom: 1em; }
@@ -132,7 +132,37 @@
             return response.json();
         }
 
-        // OPTIMIZATION 1: Fetch all data in parallel
+        /**
+         * Wykonuje serię asynchronicznych zadań w paczkach, z przerwą między każdą paczką.
+         * @param {Array<T>} items - Tablica elementów do przetworzenia.
+         * @param {(item: T) => Promise<U>} promiseFactory - Funkcja, która dla danego elementu zwraca Promise.
+         * @param {number} chunkSize - Liczba zapytań w jednej paczce (np. 10).
+         * @param {number} delay - Czas oczekiwania w milisekundach między paczkami (np. 2000).
+         * @returns {Promise<Array<PromiseSettledResult<U>>>} - Tablica wyników, tak jak z Promise.allSettled.
+         * @template T, U
+         */
+        async function processWithRateLimit(items, promiseFactory, chunkSize, delay) {
+            let allResults = [];
+            console.log(`Rozpoczynam przetwarzanie ${items.length} zapytań w paczkach po ${chunkSize}...`);
+
+            for (let i = 0; i < items.length; i += chunkSize) {
+                const chunk = items.slice(i, i + chunkSize);
+                console.log(`Przetwarzam paczkę ${Math.floor(i / chunkSize) + 1}...`);
+                
+                const promiseChunk = chunk.map(promiseFactory);
+                const chunkResults = await Promise.allSettled(promiseChunk);
+                allResults = allResults.concat(chunkResults);
+
+                if (i + chunkSize < items.length) {
+                    console.log(`Paczka przetworzona. Oczekuję ${delay / 1000}s przed następną...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+            
+            console.log("Wszystkie paczki zostały przetworzone.");
+            return allResults;
+        }
+        
         async function fetchData() {
             const loadingEl = document.getElementById('loading');
             const errorEl = document.getElementById('error-msg');
@@ -146,9 +176,7 @@
                 state.campaigns = [];
                 state.conversations = [];
 
-                // Step 1: Create promises to fetch initial data (accounts, campaigns, conversations) for each API key in parallel.
                 const dataPromises = state.selectedApiKeys.map(async (apiKey) => {
-                    // Fetch all conversations for one key with pagination
                     const fetchAllConversations = async () => {
                         let allItems = [];
                         let offset = 0;
@@ -165,7 +193,6 @@
                         return allItems;
                     };
                     
-                    // Run requests for accounts, campaigns, and conversations concurrently for this key
                     const [accountsData, campaignsData, conversations] = await Promise.all([
                         apiCall('/api/public/li_account/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey),
                         apiCall('/api/public/campaign/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey),
@@ -181,10 +208,8 @@
                     return { accounts, campaigns, conversations };
                 });
 
-                // Execute all promises and wait for them to settle
                 const results = await Promise.allSettled(dataPromises);
                 
-                // Process results
                 results.forEach(result => {
                     if (result.status === 'fulfilled') {
                         const { accounts, campaigns, conversations } = result.value;
@@ -197,13 +222,18 @@
                     }
                 });
 
-                // Step 2: Fetch all chatroom details in parallel to avoid the N+1 problem.
-                const chatroomPromises = state.conversations.map(conv =>
+                console.log("Rozpoczynam pobieranie szczegółów konwersacji z limitem zapytań...");
+                
+                const chatroomPromiseFactory = (conv) =>
                     apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
-                        .catch(err => ({ error: true, message: err.message })) // Catch errors individually
-                );
+                        .catch(err => ({ error: true, message: err.message }));
 
-                const chatroomResults = await Promise.allSettled(chatroomPromises);
+                const chatroomResults = await processWithRateLimit(
+                    state.conversations, 
+                    chatroomPromiseFactory, 
+                    10, // chunkSize: 10 zapytań
+                    2000 // delay: 2000 ms = 2 sekundy
+                );
 
                 chatroomResults.forEach((result, index) => {
                     const conv = state.conversations[index];
@@ -212,13 +242,13 @@
                         conv.fullData = chatroom;
                         conv.hasResponse = chatroom.messages?.some(msg => msg.sender === 'correspondentProfile') || false;
                     } else {
-                        console.error(`Error fetching chatroom for ${conv.id}:`, result.reason || result.value.message);
+                        const errorMessage = result.reason ? result.reason.message : (result.value ? result.value.message : 'Unknown error');
+                        console.error(`Error fetching chatroom for ${conv.id}:`, errorMessage);
                         conv.hasResponse = false;
-                        conv.fullData = null; // Ensure no stale data
+                        conv.fullData = null;
                     }
                 });
                 
-                // Show UI
                 createFilters();
                 showSections();
                 applyFilters();
@@ -230,7 +260,6 @@
             }
         }
 
-        // Create dynamic filter checkboxes
         function createFilters() {
             const createCheckbox = (container, items, valueField, nameField) => {
                 container.innerHTML = '';
@@ -264,7 +293,6 @@
             );
         }
 
-        // Apply filters and update view
         function applyFilters() {
             state.filters.hasResponse = document.getElementById('filter-has-response').checked;
             state.filters.apiKeys = [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value);
@@ -283,12 +311,10 @@
             updateStats();
         }
 
-        // OPTIMIZATION 2: Use DocumentFragment for faster DOM updates
         function updateConversationsTable() {
             const tbody = document.querySelector('#conversations-table tbody');
             const fragment = document.createDocumentFragment();
             
-            // Create a lookup map for campaigns for faster access
             const campaignMap = new Map(state.campaigns.map(c => [c.id, c]));
 
             state.filteredConversations.forEach(conv => {
@@ -305,11 +331,10 @@
                 fragment.appendChild(row);
             });
             
-            tbody.innerHTML = ''; // Clear the table body once
-            tbody.appendChild(fragment); // Append all rows in one operation
+            tbody.innerHTML = '';
+            tbody.appendChild(fragment);
         }
         
-        // Update dashboard statistics
         function updateStats() {
             const total = state.filteredConversations.length;
             const withResponse = state.filteredConversations.filter(c => c.hasResponse).length;
@@ -320,7 +345,6 @@
             document.getElementById('stats-response-rate').textContent = `${responseRate}%`;
         }
 
-        // Show thread preview
         window.openThread = (conversationId) => {
             const threadDiv = document.getElementById('thread-preview');
             const contentDiv = document.getElementById('thread-content');
@@ -362,13 +386,11 @@
             contentDiv.innerHTML = html;
         };
         
-        // OPTIMIZATION 3: Use Maps for faster lookups in CSV export
         function exportToCSV() {
             const csvRows = [];
             const headers = ['conversationId', 'campaignName', 'senderFullName', 'correspondentFullName', 'correspondentCompany', 'correspondentPosition', 'hasResponse', 'lastMessageText', 'lastMessageAt', 'apiKeyAlias'];
             csvRows.push(headers.join(','));
 
-            // Create lookup maps once before the loop
             const campaignMap = new Map(state.campaigns.map(c => [c.id, c.name]));
             const accountMap = new Map(state.accounts.map(a => [a.id, `${a.firstName} ${a.lastName}`]));
 
@@ -410,7 +432,6 @@
             });
         }
 
-        // Event listeners
         document.getElementById('fetch-data-btn').addEventListener('click', () => {
             state.authPassword = document.getElementById('auth-password').value;
             state.selectedApiKeys = [...document.querySelectorAll('#api-keys input:checked')].map(cb => cb.value);
@@ -427,7 +448,6 @@
         document.getElementById('close-thread').addEventListener('click', () => document.getElementById('thread-preview').style.display = 'none');
         document.getElementById('filter-has-response').addEventListener('change', applyFilters);
         
-        // Use event delegation for "Otwórz wątek" buttons for better performance
         document.getElementById('conversations-table').addEventListener('click', (event) => {
             if (event.target.classList.contains('open-thread-btn')) {
                 const convId = event.target.getAttribute('data-conv-id');
