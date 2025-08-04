@@ -197,13 +197,32 @@
                     }
                 });
 
-                // Step 2: Fetch all chatroom details in parallel to avoid the N+1 problem.
-                const chatroomPromises = state.conversations.map(conv =>
-                    apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
-                        .catch(err => ({ error: true, message: err.message })) // Catch errors individually
-                );
+                // Step 2: Fetch chatroom details with rate limiting (max 10 per 2 seconds)
+                const fetchChatroomsWithThrottling = async () => {
+                    const results = [];
+                    const batchSize = 10; // Max 10 per batch
+                    const delay = 2000; // 2 seconds between batches
+                    
+                    for (let i = 0; i < state.conversations.length; i += batchSize) {
+                        const batch = state.conversations.slice(i, i + batchSize);
+                        
+                        const batchPromises = batch.map(conv =>
+                            apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
+                                .catch(err => ({ error: true, message: err.message }))
+                        );
+                        
+                        const batchResults = await Promise.allSettled(batchPromises);
+                        results.push(...batchResults);
+                        
+                        // Wait before next batch (except for the last batch)
+                        if (i + batchSize < state.conversations.length) {
+                            await new Promise(resolve => setTimeout(resolve, delay));
+                        }
+                    }
+                    return results;
+                };
 
-                const chatroomResults = await Promise.allSettled(chatroomPromises);
+                const chatroomResults = await fetchChatroomsWithThrottling();
 
                 chatroomResults.forEach((result, index) => {
                     const conv = state.conversations[index];
