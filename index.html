@@ -8,7 +8,7 @@
         body { font-family: sans-serif; margin: 2em; background-color: #f4f7f6; color: #333; }
         div { margin-bottom: 1em; }
         label { display: block; margin-bottom: 0.5em; font-weight: 500; }
-        input[type="password"], input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        input[type="password"], input[type="text"], input[type="date"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
         button { cursor: pointer; padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 1em; }
         button:hover { background-color: #0056b3; }
         button:disabled { background-color: #ccc; cursor: not-allowed; }
@@ -26,6 +26,9 @@
         h2, h3, h4 { color: #343a40; }
         hr { border: 0; border-top: 1px solid #ddd; margin: 2em 0; }
         .card { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .date-filter-group { display: flex; gap: 20px; align-items: center; margin-bottom: 1em; }
+        .date-filter-group label { margin-bottom: 0; }
+        .date-filter-group input[type="date"] { width: auto; }
     </style>
 </head>
 <body>
@@ -55,11 +58,36 @@
 
     <hr id="main-separator" style="display:none;">
 
+    <div id="stats-section" style="display:none;" class="card">
+        <h2>Statystyki</h2>
+        <div>Liczba rozpoczętych wątków: <span id="stats-total">0</span></div>
+        <div>Liczba konwersacji z odpowiedzią: <span id="stats-with-response">0</span></div>
+        <div>Współczynnik odpowiedzi: <span id="stats-response-rate">0%</span></div>
+    </div>
+
     <div id="filters-section" class="card" style="display:none;">
         <h2>Krok 3: Filtruj i pobierz szczegóły</h2>
         <div>
-            <label><input type="checkbox" id="filter-has-response"> Pokaż tylko z odpowiedzią</label>
+            <label><input type="checkbox" id="filter-has-response"> Pokaż tylko z odpowiedzią (nie wpływa na statystyki)</label>
         </div>
+        <hr>
+        <h4>Filtrowanie po dacie</h4>
+        <div>
+            <label>Wybierz typ filtrowania po dacie:</label>
+            <label><input type="radio" name="dateFilterType" value="firstMessage" checked> data pierwszej wiadomości</label>
+            <label><input type="radio" name="dateFilterType" value="firstReply"> data pierwszej odpowiedzi</label>
+            <label><input type="radio" name="dateFilterType" value="lastMessage"> data ostatniej wiadomości</label>
+        </div>
+        <div>
+            <label>Wybierz zakres dat:</label>
+            <div class="date-filter-group">
+                <label for="date-start">Od:</label>
+                <input type="date" id="date-start">
+                <label for="date-end">Do:</label>
+                <input type="date" id="date-end">
+            </div>
+        </div>
+        <hr>
         <h4>Klucz API:</h4>
         <div id="filter-api-keys"></div>
         <h4>Osoba wysyłająca:</h4>
@@ -70,13 +98,6 @@
         <hr>
         <button id="fetch-details-btn">Pobierz szczegóły widocznych wątków</button>
         <div id="details-fetch-loading" class="loading-indicator" style="display:none;">Pobieranie pełnych wątków...</div>
-    </div>
-
-    <div id="stats-section" style="display:none;" class="card">
-        <h2>Statystyki</h2>
-        <div>Liczba rozpoczętych wątków: <span id="stats-total">0</span></div>
-        <div>Liczba konwersacji z odpowiedzią: <span id="stats-with-response">0</span></div>
-        <div>Współczynnik odpowiedzi: <span id="stats-response-rate">0%</span></div>
     </div>
 
     <div id="conversations-section" style="display:none;" class="card">
@@ -111,7 +132,15 @@
             campaigns: [],
             conversations: [],
             filteredConversations: [],
-            filters: { hasResponse: false, apiKeys: [], senderIds: [], campaignIds: [] }
+            filters: {
+                hasResponse: false,
+                apiKeys: [],
+                senderIds: [],
+                campaignIds: [],
+                dateFilterType: 'firstMessage',
+                dateStart: null,
+                dateEnd: null,
+            }
         };
 
         const showError = (msg) => document.getElementById('error-msg').textContent = msg;
@@ -186,9 +215,16 @@
                         state.conversations.push(...conversations);
                     } else { throw result.reason; }
                 });
+                
+                // Pre-process dates for filtering
                 state.conversations.forEach(conv => {
                     conv.hasResponse = conv.messages?.some(msg => msg.sender !== 'ME');
+                    conv.firstMessageAt = conv.createdAt; // Date of the first message is the conversation creation date
+                    const replyMessage = conv.messages?.find(msg => msg.sender !== 'ME');
+                    conv.firstReplyAt = replyMessage ? replyMessage.createdAt : null; // Date of the first reply
+                    // conv.lastMessageAt is already present
                 });
+
                 displayMainContent();
                 applyFilters();
             } catch (error) { showError(error.message); } 
@@ -240,16 +276,53 @@
                 hasResponse: document.getElementById('filter-has-response').checked,
                 apiKeys: [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value),
                 senderIds: [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value)),
-                campaignIds: [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value))
+                campaignIds: [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value)),
+                dateFilterType: document.querySelector('input[name="dateFilterType"]:checked').value,
+                dateStart: document.getElementById('date-start').value,
+                dateEnd: document.getElementById('date-end').value,
             });
-            state.filteredConversations = state.conversations.filter(conv => 
-                (!state.filters.hasResponse || conv.hasResponse) &&
-                state.filters.apiKeys.includes(conv.apiKeyAlias) &&
-                state.filters.senderIds.includes(conv.linkedInAccountId) &&
-                (!conv.campaignId || state.filters.campaignIds.includes(conv.campaignId))
+
+            const startDate = state.filters.dateStart ? new Date(state.filters.dateStart) : null;
+            const endDate = state.filters.dateEnd ? new Date(state.filters.dateEnd) : null;
+            if (startDate) startDate.setHours(0, 0, 0, 0);
+            if (endDate) endDate.setHours(23, 59, 59, 999);
+
+            const baseFilteredConversations = state.conversations.filter(conv => {
+                const apiKeyMatch = state.filters.apiKeys.includes(conv.apiKeyAlias);
+                const senderMatch = state.filters.senderIds.includes(conv.linkedInAccountId);
+                const campaignMatch = !conv.campaignId || state.filters.campaignIds.includes(conv.campaignId);
+                
+                let dateMatch = true;
+                if (startDate || endDate) {
+                    let convDateStr = null;
+                    switch (state.filters.dateFilterType) {
+                        case 'firstMessage': convDateStr = conv.firstMessageAt; break;
+                        case 'firstReply': convDateStr = conv.firstReplyAt; break;
+                        case 'lastMessage': convDateStr = conv.lastMessageAt; break;
+                    }
+                    
+                    if (!convDateStr) {
+                         dateMatch = false; // If the required date doesn't exist (e.g., no reply), filter it out
+                    } else {
+                        const convDate = new Date(convDateStr);
+                        const startOK = !startDate || convDate >= startDate;
+                        const endOK = !endDate || convDate <= endDate;
+                        dateMatch = startOK && endOK;
+                    }
+                }
+                
+                return apiKeyMatch && senderMatch && campaignMatch && dateMatch;
+            });
+
+            // Update stats based on filters *before* applying the "hasResponse" filter
+            updateStats(baseFilteredConversations);
+
+            // Now apply the "hasResponse" filter for the table view
+            state.filteredConversations = baseFilteredConversations.filter(conv => 
+                !state.filters.hasResponse || conv.hasResponse
             );
+
             updateConversationsTable();
-            updateStats();
         }
         
         function updateConversationsTable() {
@@ -276,9 +349,9 @@
             tbody.appendChild(fragment);
         }
 
-        function updateStats() {
-            const total = state.filteredConversations.length;
-            const withResponse = state.filteredConversations.filter(c => c.hasResponse).length;
+        function updateStats(conversationsForStats) {
+            const total = conversationsForStats.length;
+            const withResponse = conversationsForStats.filter(c => c.hasResponse).length;
             document.getElementById('stats-total').textContent = total;
             document.getElementById('stats-with-response').textContent = withResponse;
             document.getElementById('stats-response-rate').textContent = `${total > 0 ? ((withResponse / total) * 100).toFixed(2) : 0}%`;
