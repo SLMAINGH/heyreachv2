@@ -197,11 +197,25 @@
                     }
                 });
 
-                // Skip chatroom fetching for now - just set hasResponse to false for all conversations
-                console.log(`Found ${state.conversations.length} conversations, setting hasResponse=false for all`);
-                state.conversations.forEach(conv => {
-                    conv.hasResponse = false;
-                    conv.fullData = null;
+                // Step 2: Fetch all chatroom details in parallel to avoid the N+1 problem.
+                const chatroomPromises = state.conversations.map(conv =>
+                    apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
+                        .catch(err => ({ error: true, message: err.message })) // Catch errors individually
+                );
+
+                const chatroomResults = await Promise.allSettled(chatroomPromises);
+
+                chatroomResults.forEach((result, index) => {
+                    const conv = state.conversations[index];
+                    if (result.status === 'fulfilled' && !result.value.error) {
+                        const chatroom = result.value;
+                        conv.fullData = chatroom;
+                        conv.hasResponse = chatroom.messages?.some(msg => msg.sender === 'correspondentProfile') || false;
+                    } else {
+                        console.error(`Error fetching chatroom for ${conv.id}:`, result.reason || result.value.message);
+                        conv.hasResponse = false;
+                        conv.fullData = null; // Ensure no stale data
+                    }
                 });
                 
                 // Show UI
@@ -269,12 +283,12 @@
                 if (state.filters.apiKeys.length > 0 && !state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
                 if (state.filters.senderIds.length > 0 && !state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
                 if (state.filters.campaignIds.length > 0) {
-                    if (!conv.campaignId) return false; // Odrzuć konwersacje bez kampanii
-                    if (!state.filters.campaignIds.includes(conv.campaignId)) return false; // Odrzuć inne kampanie
+                    if (!conv.campaignId) return false;
+                    if (!state.filters.campaignIds.includes(conv.campaignId)) return false;
                 }
                 return true;
             });
-            
+
             updateConversationsTable();
             updateStats();
         }
