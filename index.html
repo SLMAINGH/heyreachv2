@@ -3,82 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HeyReach Conversation Dashboard V2 (Optimized + Rate Limit)</title>
+    <title>HeyReach Dashboard (Final)</title>
     <style>
-        body { font-family: sans-serif; margin: 2em; }
+        body { font-family: sans-serif; margin: 2em; background-color: #f4f7f6; color: #333; }
         div { margin-bottom: 1em; }
-        label { display: block; margin-bottom: 0.5em; }
-        button { cursor: pointer; padding: 8px 12px; }
-        table { border-collapse: collapse; width: 100%; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        label { display: block; margin-bottom: 0.5em; font-weight: 500; }
+        input[type="password"], input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        button { cursor: pointer; padding: 10px 15px; background-color: #007bff; color: white; border: none; border-radius: 4px; font-size: 1em; }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        table { border-collapse: collapse; width: 100%; background-color: white; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #e9ecef; }
         #thread-preview {
-            position: fixed; top: 10%; left: 10%; width: 80%; height: 80%;
-            background: white; border: 2px solid #333; overflow: auto;
-            padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 100;
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 80%; max-width: 800px; height: 80%;
+            background: white; border: 1px solid #ccc; border-radius: 8px;
+            overflow: auto; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 100;
         }
+        .loading-indicator { font-size: 1.2em; color: #007bff; }
+        #error-msg { color: #d9534f; font-weight: bold; }
+        h2, h3, h4 { color: #343a40; }
+        hr { border: 0; border-top: 1px solid #ddd; margin: 2em 0; }
+        .card { background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     </style>
 </head>
 <body>
-    <div id="config-section">
-        <h2>Konfiguracja</h2>
+    <div id="auth-section" class="card">
+        <h2>Krok 1: Autoryzacja</h2>
         <div>
-            <label>Hasło: <input type="password" id="auth-password" placeholder="Wprowadź hasło"></label>
+            <label for="auth-password">Hasło:</label>
+            <input type="password" id="auth-password" placeholder="Wprowadź hasło">
         </div>
-        
+        <button id="auth-btn">Zaloguj</button>
+        <div id="auth-loading" class="loading-indicator" style="display:none;">Sprawdzanie...</div>
+    </div>
+
+    <div id="config-section" class="card" style="display:none;">
+        <h2>Krok 2: Pobierz dane bazowe</h2>
         <h3>Wybierz klucze API:</h3>
         <div id="api-keys">
             <label><input type="checkbox" value="ICP"> ICP</label>
             <label><input type="checkbox" value="account2"> account2</label>
             <label><input type="checkbox" value="account3"> account3</label>
         </div>
-        
-        <button id="fetch-data-btn">Pobierz Dane</button>
-        <div id="loading" style="display:none;">Ładowanie... (To może potrwać, zależnie od ilości danych)</div>
-        <div id="error-msg" style="color:red;"></div>
+        <button id="fetch-initial-data-btn">Pobierz podsumowania konwersacji</button>
+        <div id="initial-fetch-loading" class="loading-indicator" style="display:none;">Pobieranie...</div>
     </div>
+    
+    <div id="error-msg"></div>
 
-    <hr>
+    <hr id="main-separator" style="display:none;">
 
-    <div id="filters-section" style="display:none;">
-        <h2>Filtry</h2>
-        
+    <div id="filters-section" class="card" style="display:none;">
+        <h2>Krok 3: Filtruj i pobierz szczegóły</h2>
         <div>
             <label><input type="checkbox" id="filter-has-response"> Pokaż tylko z odpowiedzią</label>
         </div>
-        
-        <div>
-            <h4>Klucz API:</h4>
-            <div id="filter-api-keys"></div>
-        </div>
-        
-        <div>
-            <h4>Osoba wysyłająca:</h4>
-            <div id="filter-senders"></div>
-        </div>
-        
-        <div>
-            <h4>Kampania:</h4>
-            <div id="filter-campaigns"></div>
-        </div>
-        
+        <h4>Klucz API:</h4>
+        <div id="filter-api-keys"></div>
+        <h4>Osoba wysyłająca:</h4>
+        <div id="filter-senders"></div>
+        <h4>Kampania:</h4>
+        <div id="filter-campaigns"></div>
         <button id="apply-filters-btn">Zastosuj filtry</button>
+        <hr>
+        <button id="fetch-details-btn">Pobierz szczegóły widocznych wątków</button>
+        <div id="details-fetch-loading" class="loading-indicator" style="display:none;">Pobieranie pełnych wątków...</div>
     </div>
 
-    <hr>
-
-    <div id="stats-section" style="display:none;">
+    <div id="stats-section" style="display:none;" class="card">
         <h2>Statystyki</h2>
         <div>Liczba rozpoczętych wątków: <span id="stats-total">0</span></div>
         <div>Liczba konwersacji z odpowiedzią: <span id="stats-with-response">0</span></div>
         <div>Współczynnik odpowiedzi: <span id="stats-response-rate">0%</span></div>
     </div>
 
-    <hr>
-
-    <div id="conversations-section" style="display:none;">
+    <div id="conversations-section" style="display:none;" class="card">
         <h2>Konwersacje</h2>
         <button id="export-csv-btn">Pobierz jako CSV</button>
-        <table id="conversations-table" border="1">
+        <table id="conversations-table">
             <thead>
                 <tr>
                     <th>Imię i Nazwisko</th>
@@ -99,9 +103,6 @@
     </div>
 
     <script type="module">
-        // TypeScript interfaces are kept as comments for documentation
-        /* ... interfaces ... */
-
         const state = {
             workerUrl: 'https://snowy-hall-5f3d.lammelstanislaw.workers.dev',
             authPassword: '',
@@ -113,348 +114,259 @@
             filters: { hasResponse: false, apiKeys: [], senderIds: [], campaignIds: [] }
         };
 
-        // Helper for API calls
-        async function apiCall(endpoint, method = 'GET', body = null, apiKeyAlias = null) {
-            const headers = {
-                'X-Custom-Auth': state.authPassword,
-                'Content-Type': 'application/json'
-            };
-            if (apiKeyAlias) headers['X-API-KEY'] = apiKeyAlias;
+        const showError = (msg) => document.getElementById('error-msg').textContent = msg;
+        const showLoading = (id) => document.getElementById(id).style.display = 'block';
+        const hideLoading = (id) => document.getElementById(id).style.display = 'none';
 
-            const options = { method, headers };
-            if (body && method === 'POST') options.body = JSON.stringify(body);
-            
+        async function apiCall(endpoint, method = 'GET', body = null, apiKeyAlias = null) {
+            const headers = { 'X-Custom-Auth': state.authPassword, 'Content-Type': 'application/json' };
+            if (apiKeyAlias) headers['X-API-KEY'] = apiKeyAlias;
+            const options = { method, headers, body: body ? JSON.stringify(body) : null };
             const response = await fetch(state.workerUrl + endpoint, options);
             if (!response.ok) {
                 const errorText = await response.text();
-                throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
+                throw new Error(`Błąd API: ${response.status} - ${errorText}`);
             }
             return response.json();
         }
 
-        /**
-         * Wykonuje serię asynchronicznych zadań w paczkach, z przerwą między każdą paczką.
-         * @param {Array<T>} items - Tablica elementów do przetworzenia.
-         * @param {(item: T) => Promise<U>} promiseFactory - Funkcja, która dla danego elementu zwraca Promise.
-         * @param {number} chunkSize - Liczba zapytań w jednej paczce (np. 10).
-         * @param {number} delay - Czas oczekiwania w milisekundach między paczkami (np. 2000).
-         * @returns {Promise<Array<PromiseSettledResult<U>>>} - Tablica wyników, tak jak z Promise.allSettled.
-         * @template T, U
-         */
-        async function processWithRateLimit(items, promiseFactory, chunkSize, delay) {
-            let allResults = [];
-            console.log(`Rozpoczynam przetwarzanie ${items.length} zapytań w paczkach po ${chunkSize}...`);
-
-            for (let i = 0; i < items.length; i += chunkSize) {
-                const chunk = items.slice(i, i + chunkSize);
-                console.log(`Przetwarzam paczkę ${Math.floor(i / chunkSize) + 1}...`);
-                
-                const promiseChunk = chunk.map(promiseFactory);
-                const chunkResults = await Promise.allSettled(promiseChunk);
-                allResults = allResults.concat(chunkResults);
-
-                if (i + chunkSize < items.length) {
-                    console.log(`Paczka przetworzona. Oczekuję ${delay / 1000}s przed następną...`);
-                    await new Promise(resolve => setTimeout(resolve, delay));
+        async function processSequentially(items, promiseFactory, delay) {
+            const allResults = [];
+            const loadingIndicator = document.getElementById('details-fetch-loading');
+            console.log(`Rozpoczynam sekwencyjne przetwarzanie ${items.length} zapytań...`);
+            showLoading('details-fetch-loading');
+            for (let i = 0; i < items.length; i++) {
+                loadingIndicator.textContent = `Pobieranie wątku ${i + 1} z ${items.length}...`;
+                try {
+                    const value = await promiseFactory(items[i]);
+                    allResults.push({ status: 'fulfilled', value });
+                } catch (reason) {
+                    allResults.push({ status: 'rejected', reason });
                 }
+                if (i < items.length - 1) await new Promise(resolve => setTimeout(resolve, delay));
             }
-            
-            console.log("Wszystkie paczki zostały przetworzone.");
+            hideLoading('details-fetch-loading');
+            console.log("Zakończono przetwarzanie sekwencyjne.");
             return allResults;
         }
-        
-        async function fetchData() {
-            const loadingEl = document.getElementById('loading');
-            const errorEl = document.getElementById('error-msg');
-            
-            loadingEl.style.display = 'block';
-            errorEl.textContent = '';
 
+        async function fetchInitialData() {
+            showLoading('initial-fetch-loading');
+            showError('');
             try {
-                // Reset state
-                state.accounts = [];
-                state.campaigns = [];
-                state.conversations = [];
-
+                Object.assign(state, { accounts: [], campaigns: [], conversations: [], filteredConversations: [] });
                 const dataPromises = state.selectedApiKeys.map(async (apiKey) => {
-                    const fetchAllConversations = async () => {
-                        let allItems = [];
-                        let offset = 0;
-                        const limit = 100;
-                        let hasMore = true;
+                    const fetchAllConversationSummaries = async () => {
+                        let allItems = [], offset = 0, limit = 100, hasMore = true;
                         while (hasMore) {
-                            const data = await apiCall('/api/public/inbox/GetConversations', 'POST', { offset, limit, filters: {} }, apiKey);
+                            const data = await apiCall('/api/public/inbox/GetConversationsV2', 'POST', { offset, limit, filters: {} }, apiKey);
                             const items = data.items || [];
                             items.forEach(conv => conv.apiKeyAlias = apiKey);
                             allItems.push(...items);
                             offset += limit;
-                            hasMore = items.length === limit && offset < data.totalCount;
+                            hasMore = items.length === limit && data.totalCount > offset;
                         }
                         return allItems;
                     };
-                    
                     const [accountsData, campaignsData, conversations] = await Promise.all([
                         apiCall('/api/public/li_account/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey),
                         apiCall('/api/public/campaign/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey),
-                        fetchAllConversations()
+                        fetchAllConversationSummaries()
                     ]);
-
-                    const accounts = accountsData.items || [];
-                    accounts.forEach(acc => acc.apiKeyAlias = apiKey);
-
-                    const campaigns = campaignsData.items || [];
-                    campaigns.forEach(camp => camp.apiKeyAlias = apiKey);
-
-                    return { accounts, campaigns, conversations };
+                    accountsData.items.forEach(acc => acc.apiKeyAlias = apiKey);
+                    campaignsData.items.forEach(camp => camp.apiKeyAlias = apiKey);
+                    return { accounts: accountsData.items, campaigns: campaignsData.items, conversations };
                 });
-
                 const results = await Promise.allSettled(dataPromises);
-                
                 results.forEach(result => {
                     if (result.status === 'fulfilled') {
                         const { accounts, campaigns, conversations } = result.value;
                         state.accounts.push(...accounts);
                         state.campaigns.push(...campaigns);
                         state.conversations.push(...conversations);
-                    } else {
-                        console.error("Error fetching data for one of the keys:", result.reason);
-                        errorEl.textContent += `Błąd pobierania danych: ${result.reason.message}\n`;
-                    }
+                    } else { throw result.reason; }
                 });
-
-                console.log("Rozpoczynam pobieranie szczegółów konwersacji z limitem zapytań...");
-                
-                const chatroomPromiseFactory = (conv) =>
-                    apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
-                        .catch(err => ({ error: true, message: err.message }));
-
-                const chatroomResults = await processWithRateLimit(
-                    state.conversations, 
-                    chatroomPromiseFactory, 
-                    10, // chunkSize: 10 zapytań
-                    2000 // delay: 2000 ms = 2 sekundy
-                );
-
-                chatroomResults.forEach((result, index) => {
-                    const conv = state.conversations[index];
-                    if (result.status === 'fulfilled' && !result.value.error) {
-                        const chatroom = result.value;
-                        conv.fullData = chatroom;
-                        conv.hasResponse = chatroom.messages?.some(msg => msg.sender === 'correspondentProfile') || false;
-                    } else {
-                        const errorMessage = result.reason ? result.reason.message : (result.value ? result.value.message : 'Unknown error');
-                        console.error(`Error fetching chatroom for ${conv.id}:`, errorMessage);
-                        conv.hasResponse = false;
-                        conv.fullData = null;
-                    }
+                state.conversations.forEach(conv => {
+                    conv.hasResponse = conv.messages?.some(msg => msg.sender !== 'ME');
                 });
-                
-                createFilters();
-                showSections();
+                displayMainContent();
                 applyFilters();
-
-            } catch (error) {
-                errorEl.textContent = `Błąd: ${error.message}`;
-            } finally {
-                loadingEl.style.display = 'none';
+            } catch (error) { showError(error.message); } 
+            finally { hideLoading('initial-fetch-loading'); }
+        }
+        
+        async function fetchThreadDetails() {
+            const threadsToFetch = state.filteredConversations.filter(c => c.hasResponse && !c.fullData);
+            if (threadsToFetch.length === 0) {
+                alert("Wszystkie widoczne wątki z odpowiedziami zostały już pobrane.");
+                return;
             }
+            const chatroomPromiseFactory = (conv) => apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias);
+            const results = await processSequentially(threadsToFetch, chatroomPromiseFactory, 200);
+            results.forEach((result, index) => {
+                const thread = threadsToFetch[index];
+                if (result.status === 'fulfilled') {
+                    thread.fullData = result.value;
+                } else {
+                    console.error(`Błąd pobierania wątku ${thread.id}:`, result.reason);
+                    showError(`Nie udało się pobrać wątku dla ${thread.correspondentProfile?.firstName}. Spróbuj ponownie.`);
+                }
+            });
+            updateConversationsTable();
+        }
+
+        function displayMainContent() {
+            document.getElementById('main-separator').style.display = 'block';
+            ['filters-section', 'stats-section', 'conversations-section'].forEach(id => document.getElementById(id).style.display = 'block');
+            createFilters();
         }
 
         function createFilters() {
             const createCheckbox = (container, items, valueField, nameField) => {
                 container.innerHTML = '';
-                const uniqueItems = [...new Map(items.map(item => [item[valueField], item])).values()];
-                uniqueItems.forEach(item => {
+                [...new Map(items.map(item => [item[valueField], item])).values()].forEach(item => {
                     const label = document.createElement('label');
                     label.innerHTML = `<input type="checkbox" value="${item[valueField]}" checked> ${nameField(item)}`;
                     container.appendChild(label);
                 });
             };
-
-            createCheckbox(
-                document.getElementById('filter-api-keys'),
-                [...new Set(state.conversations.map(c => c.apiKeyAlias))].map(key => ({ key })),
-                'key',
-                item => item.key
-            );
-
-            createCheckbox(
-                document.getElementById('filter-senders'),
-                state.accounts,
-                'id',
-                sender => `${sender.firstName} ${sender.lastName}`
-            );
-
-            createCheckbox(
-                document.getElementById('filter-campaigns'),
-                state.campaigns,
-                'id',
-                campaign => campaign.name
-            );
+            createCheckbox(document.getElementById('filter-api-keys'), [...new Set(state.conversations.map(c => c.apiKeyAlias))].map(key => ({ key })), 'key', item => item.key);
+            createCheckbox(document.getElementById('filter-senders'), state.accounts, 'id', sender => `${sender.firstName} ${sender.lastName}`);
+            createCheckbox(document.getElementById('filter-campaigns'), state.campaigns, 'id', camp => camp.name);
         }
 
         function applyFilters() {
-            state.filters.hasResponse = document.getElementById('filter-has-response').checked;
-            state.filters.apiKeys = [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value);
-            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value));
-            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value));
-
-            state.filteredConversations = state.conversations.filter(conv => {
-                if (state.filters.hasResponse && !conv.hasResponse) return false;
-                if (!state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
-                if (!state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
-                if (conv.campaignId && !state.filters.campaignIds.includes(conv.campaignId)) return false;
-                return true;
+            Object.assign(state.filters, {
+                hasResponse: document.getElementById('filter-has-response').checked,
+                apiKeys: [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value),
+                senderIds: [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value)),
+                campaignIds: [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value))
             });
-
+            state.filteredConversations = state.conversations.filter(conv => 
+                (!state.filters.hasResponse || conv.hasResponse) &&
+                state.filters.apiKeys.includes(conv.apiKeyAlias) &&
+                state.filters.senderIds.includes(conv.linkedInAccountId) &&
+                (!conv.campaignId || state.filters.campaignIds.includes(conv.campaignId))
+            );
             updateConversationsTable();
             updateStats();
         }
-
+        
         function updateConversationsTable() {
             const tbody = document.querySelector('#conversations-table tbody');
+            tbody.innerHTML = '';
             const fragment = document.createDocumentFragment();
-            
-            const campaignMap = new Map(state.campaigns.map(c => [c.id, c]));
-
+            const campaignMap = new Map(state.campaigns.map(c => [c.id, c.name]));
             state.filteredConversations.forEach(conv => {
-                const campaign = campaignMap.get(conv.campaignId);
                 const row = document.createElement('tr');
-                
+                let btnState = 'disabled', btnTitle = '';
+                if (conv.hasResponse) {
+                    btnState = conv.fullData ? '' : 'disabled';
+                    btnTitle = conv.fullData ? '' : 'title="Szczegóły niepobrane. Użyj przycisku w filtrach, aby załadować."';
+                } else { btnTitle = 'title="Brak odpowiedzi w tej konwersacji."'; }
                 row.innerHTML = `
                     <td>${conv.correspondentProfile?.firstName || ''} ${conv.correspondentProfile?.lastName || ''}</td>
                     <td>${conv.lastMessageText || 'Brak wiadomości'}</td>
-                    <td>${campaign?.name || 'Brak kampanii'}</td>
+                    <td>${campaignMap.get(conv.campaignId) || 'Brak kampanii'}</td>
                     <td>${conv.apiKeyAlias}</td>
-                    <td><button class="open-thread-btn" data-conv-id="${conv.id}">Otwórz wątek</button></td>
+                    <td><button class="open-thread-btn" data-conv-id="${conv.id}" ${btnState} ${btnTitle}>Otwórz wątek</button></td>
                 `;
                 fragment.appendChild(row);
             });
-            
-            tbody.innerHTML = '';
             tbody.appendChild(fragment);
         }
-        
+
         function updateStats() {
             const total = state.filteredConversations.length;
             const withResponse = state.filteredConversations.filter(c => c.hasResponse).length;
-            const responseRate = total > 0 ? ((withResponse / total) * 100).toFixed(2) : 0;
-
             document.getElementById('stats-total').textContent = total;
             document.getElementById('stats-with-response').textContent = withResponse;
-            document.getElementById('stats-response-rate').textContent = `${responseRate}%`;
+            document.getElementById('stats-response-rate').textContent = `${total > 0 ? ((withResponse / total) * 100).toFixed(2) : 0}%`;
         }
 
-        window.openThread = (conversationId) => {
-            const threadDiv = document.getElementById('thread-preview');
-            const contentDiv = document.getElementById('thread-content');
-            
-            threadDiv.style.display = 'block';
-            contentDiv.innerHTML = 'Ładowanie...';
-
+        function openThread(conversationId) {
             const conversation = state.conversations.find(c => c.id === conversationId);
-            if (!conversation || !conversation.fullData) {
-                contentDiv.innerHTML = `<p style="color:red;">Błąd: nie znaleziono pełnych danych konwersacji. Spróbuj odświeżyć.</p>`;
-                return;
-            }
+            if (!conversation?.fullData) return;
             const data = conversation.fullData;
-
-            let html = `
-                <h4>Rozmówca: ${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}</h4>
-                <p>Firma: ${data.correspondentProfile?.companyName || 'Brak'}</p>
-                <p>Stanowisko: ${data.correspondentProfile?.position || 'Brak'}</p>
-                <hr>
-                <h4>Historia wiadomości:</h4>
-            `;
-
-            if (data.messages && data.messages.length > 0) {
+            const contentDiv = document.getElementById('thread-content');
+            let html = `<h4>Rozmówca: ${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}</h4><hr><h4>Historia wiadomości:</h4>`;
+            if (data.messages?.length > 0) {
                 data.messages.forEach(msg => {
-                    const senderName = msg.sender === 'linkedInAccount' 
-                        ? `${data.linkedInAccount.firstName} ${data.linkedInAccount.lastName} (Ty)` 
-                        : `${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}`;
-                    html += `
-                        <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
-                            <strong>${senderName}</strong> - ${new Date(msg.createdAt).toLocaleString()}<br>
-                            ${msg.subject ? `<em>Temat: ${msg.subject}</em><br>` : ''}
-                            ${msg.body}
-                        </div>
-                    `;
+                    const senderName = msg.sender === 'linkedInAccount' ? `${data.linkedInAccount.firstName} (Ty)` : data.correspondentProfile?.firstName;
+                    html += `<div style="margin:10px 0; padding:10px; border:1px solid #eee; border-radius:5px;">
+                                <strong>${senderName}</strong> - ${new Date(msg.createdAt).toLocaleString()}<br>
+                                <div style="white-space: pre-wrap; margin-top:5px;">${msg.body}</div>
+                            </div>`;
                 });
-            } else {
-                html += '<p>Brak wiadomości w tym wątku.</p>';
-            }
+            } else { html += '<p>Brak wiadomości w tym wątku.</p>'; }
             contentDiv.innerHTML = html;
-        };
-        
+            document.getElementById('thread-preview').style.display = 'block';
+        }
+
         function exportToCSV() {
             const csvRows = [];
-            const headers = ['conversationId', 'campaignName', 'senderFullName', 'correspondentFullName', 'correspondentCompany', 'correspondentPosition', 'hasResponse', 'lastMessageText', 'lastMessageAt', 'apiKeyAlias'];
+            const headers = ['conversationId', 'campaignName', 'senderFullName', 'correspondentFullName', 'correspondentCompany', 'correspondentPosition', 'hasResponse', 'lastMessageText', 'lastMessageAt', 'apiKeyAlias', 'fullConversationText'];
             csvRows.push(headers.join(','));
-
             const campaignMap = new Map(state.campaigns.map(c => [c.id, c.name]));
             const accountMap = new Map(state.accounts.map(a => [a.id, `${a.firstName} ${a.lastName}`]));
-
-            const escapeCSV = (str) => `"${(str || '').replace(/"/g, '""')}"`;
+            const escapeCSV = (str) => `"${(str || '').toString().replace(/"/g, '""')}"`;
 
             state.filteredConversations.forEach(conv => {
-                const campaignName = campaignMap.get(conv.campaignId) || '';
-                const senderName = accountMap.get(conv.linkedInAccountId) || '';
-                const profile = conv.correspondentProfile;
-
+                let fullText = '';
+                if (conv.fullData?.messages) {
+                    fullText = conv.fullData.messages.map(msg => {
+                        const senderName = msg.sender === 'linkedInAccount' ? `${conv.fullData.linkedInAccount.firstName} (Ty)` : conv.fullData.correspondentProfile?.firstName;
+                        const body = (msg.body || '').replace(/\r?\n/g, ' ');
+                        return `[${new Date(msg.createdAt).toLocaleString('pl-PL')}] ${senderName}: ${body}`;
+                    }).join(' | ');
+                }
                 const row = [
-                    conv.id,
-                    escapeCSV(campaignName),
-                    escapeCSV(senderName),
-                    escapeCSV(`${profile?.firstName} ${profile?.lastName}`),
-                    escapeCSV(profile?.companyName),
-                    escapeCSV(profile?.position),
-                    conv.hasResponse ? 'TAK' : 'NIE',
-                    escapeCSV(conv.lastMessageText),
-                    conv.lastMessageAt || '',
-                    conv.apiKeyAlias || ''
-                ];
-                csvRows.push(row.join(','));
+                    escapeCSV(conv.id), escapeCSV(campaignMap.get(conv.campaignId)), escapeCSV(accountMap.get(conv.linkedInAccountId)),
+                    escapeCSV(`${conv.correspondentProfile?.firstName} ${conv.correspondentProfile?.lastName}`), escapeCSV(conv.correspondentProfile?.companyName),
+                    escapeCSV(conv.correspondentProfile?.position), conv.hasResponse ? 'TAK' : 'NIE', escapeCSV(conv.lastMessageText),
+                    escapeCSV(conv.lastMessageAt), escapeCSV(conv.apiKeyAlias), escapeCSV(fullText)
+                ].join(',');
+                csvRows.push(row);
             });
-
-            const csv = csvRows.join('\n');
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const blob = new Blob(['\uFEFF' + csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
-            link.setAttribute('href', URL.createObjectURL(blob));
-            link.setAttribute('download', `heyreach_conversations_${new Date().toISOString().split('T')[0]}.csv`);
+            link.href = URL.createObjectURL(blob);
+            link.download = `heyreach_conversations_${new Date().toISOString().split('T')[0]}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
-        function showSections() {
-            ['filters-section', 'stats-section', 'conversations-section'].forEach(id => {
-                document.getElementById(id).style.display = 'block';
-            });
-        }
-
-        document.getElementById('fetch-data-btn').addEventListener('click', () => {
+        // --- EVENT LISTENERS ---
+        document.getElementById('auth-btn').addEventListener('click', async () => {
             state.authPassword = document.getElementById('auth-password').value;
-            state.selectedApiKeys = [...document.querySelectorAll('#api-keys input:checked')].map(cb => cb.value);
-
-            if (!state.authPassword || state.selectedApiKeys.length === 0) {
-                document.getElementById('error-msg').textContent = 'Wypełnij hasło i wybierz co najmniej jeden klucz API.';
-                return;
-            }
-            fetchData();
+            if (!state.authPassword) return showError('Hasło nie może być puste.');
+            showLoading('auth-loading');
+            showError('');
+            try {
+                await apiCall('/api/public/li_account/GetAll', 'POST', { offset: 0, limit: 1 }, 'ICP');
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('config-section').style.display = 'block';
+            } catch (error) { showError('Błędne hasło lub problem z API. ' + error.message); } 
+            finally { hideLoading('auth-loading'); }
         });
 
+        document.getElementById('fetch-initial-data-btn').addEventListener('click', () => {
+            state.selectedApiKeys = [...document.querySelectorAll('#api-keys input:checked')].map(cb => cb.value);
+            if (state.selectedApiKeys.length === 0) return showError('Wybierz co najmniej jeden klucz API.');
+            fetchInitialData();
+        });
+
+        document.getElementById('fetch-details-btn').addEventListener('click', fetchThreadDetails);
         document.getElementById('apply-filters-btn').addEventListener('click', applyFilters);
         document.getElementById('export-csv-btn').addEventListener('click', exportToCSV);
         document.getElementById('close-thread').addEventListener('click', () => document.getElementById('thread-preview').style.display = 'none');
-        document.getElementById('filter-has-response').addEventListener('change', applyFilters);
-        
         document.getElementById('conversations-table').addEventListener('click', (event) => {
-            if (event.target.classList.contains('open-thread-btn')) {
-                const convId = event.target.getAttribute('data-conv-id');
-                window.openThread(convId);
+            const btn = event.target;
+            if (btn.classList.contains('open-thread-btn') && !btn.disabled) {
+                openThread(btn.getAttribute('data-conv-id'));
             }
         });
-
     </script>
 </body>
 </html>
