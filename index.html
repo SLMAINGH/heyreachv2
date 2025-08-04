@@ -197,32 +197,13 @@
                     }
                 });
 
-                // Step 2: Fetch chatroom details with rate limiting (max 10 per 2 seconds)
-                const fetchChatroomsWithThrottling = async () => {
-                    const results = [];
-                    const batchSize = 10; // Max 10 per batch
-                    const delay = 2000; // 2 seconds between batches
-                    
-                    for (let i = 0; i < state.conversations.length; i += batchSize) {
-                        const batch = state.conversations.slice(i, i + batchSize);
-                        
-                        const batchPromises = batch.map(conv =>
-                            apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
-                                .catch(err => ({ error: true, message: err.message }))
-                        );
-                        
-                        const batchResults = await Promise.allSettled(batchPromises);
-                        results.push(...batchResults);
-                        
-                        // Wait before next batch (except for the last batch)
-                        if (i + batchSize < state.conversations.length) {
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                        }
-                    }
-                    return results;
-                };
+                // Step 2: Fetch all chatroom details in parallel to avoid the N+1 problem.
+                const chatroomPromises = state.conversations.map(conv =>
+                    apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
+                        .catch(err => ({ error: true, message: err.message })) // Catch errors individually
+                );
 
-                const chatroomResults = await fetchChatroomsWithThrottling();
+                const chatroomResults = await Promise.allSettled(chatroomPromises);
 
                 chatroomResults.forEach((result, index) => {
                     const conv = state.conversations[index];
@@ -256,14 +237,7 @@
                 const uniqueItems = [...new Map(items.map(item => [item[valueField], item])).values()];
                 uniqueItems.forEach(item => {
                     const label = document.createElement('label');
-                    const checkbox = document.createElement('input');
-                    checkbox.type = 'checkbox';
-                    checkbox.value = item[valueField];
-                    checkbox.checked = true;
-                    checkbox.addEventListener('change', applyFilters);
-                    
-                    label.appendChild(checkbox);
-                    label.appendChild(document.createTextNode(' ' + nameField(item)));
+                    label.innerHTML = `<input type="checkbox" value="${item[valueField]}" checked> ${nameField(item)}`;
                     container.appendChild(label);
                 });
             };
@@ -294,17 +268,14 @@
         function applyFilters() {
             state.filters.hasResponse = document.getElementById('filter-has-response').checked;
             state.filters.apiKeys = [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value);
-            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value)).filter(id => !isNaN(id));
-            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value)).filter(id => !isNaN(id));
+            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value));
+            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value));
 
             state.filteredConversations = state.conversations.filter(conv => {
                 if (state.filters.hasResponse && !conv.hasResponse) return false;
-                if (state.filters.apiKeys.length > 0 && !state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
-                if (state.filters.senderIds.length > 0 && !state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
-                if (state.filters.campaignIds.length > 0) {
-                    if (!conv.campaignId) return false;
-                    if (!state.filters.campaignIds.includes(conv.campaignId)) return false;
-                }
+                if (!state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
+                if (!state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
+                if (conv.campaignId && !state.filters.campaignIds.includes(conv.campaignId)) return false;
                 return true;
             });
 
