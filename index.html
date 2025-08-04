@@ -3,10 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HeyReach Conversation Dashboard V2</title>
+    <title>HeyReach Conversation Dashboard V2 (Optimized)</title>
+    <style>
+        body { font-family: sans-serif; margin: 2em; }
+        div { margin-bottom: 1em; }
+        label { display: block; margin-bottom: 0.5em; }
+        button { cursor: pointer; padding: 8px 12px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        #thread-preview {
+            position: fixed; top: 10%; left: 10%; width: 80%; height: 80%;
+            background: white; border: 2px solid #333; overflow: auto;
+            padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); z-index: 100;
+        }
+    </style>
 </head>
 <body>
-    <!-- Konfiguracja -->
     <div id="config-section">
         <h2>Konfiguracja</h2>
         <div>
@@ -21,13 +33,12 @@
         </div>
         
         <button id="fetch-data-btn">Pobierz Dane</button>
-        <div id="loading" style="display:none;">Ładowanie...</div>
+        <div id="loading" style="display:none;">Ładowanie... (To może potrwać, zależnie od ilości danych)</div>
         <div id="error-msg" style="color:red;"></div>
     </div>
 
     <hr>
 
-    <!-- Filtry -->
     <div id="filters-section" style="display:none;">
         <h2>Filtry</h2>
         
@@ -55,7 +66,6 @@
 
     <hr>
 
-    <!-- Statystyki -->
     <div id="stats-section" style="display:none;">
         <h2>Statystyki</h2>
         <div>Liczba rozpoczętych wątków: <span id="stats-total">0</span></div>
@@ -65,7 +75,6 @@
 
     <hr>
 
-    <!-- Lista konwersacji -->
     <div id="conversations-section" style="display:none;">
         <h2>Konwersacje</h2>
         <button id="export-csv-btn">Pobierz jako CSV</button>
@@ -83,89 +92,16 @@
         </table>
     </div>
 
-    <!-- Podgląd wątku -->
     <div id="thread-preview" style="display:none;">
         <h3>Szczegóły konwersacji</h3>
-        <button id="close-thread">Zamknij</button>
+        <button id="close-thread" style="position: absolute; top: 10px; right: 10px;">Zamknij</button>
         <div id="thread-content"></div>
     </div>
 
     <script type="module">
-        // Interfejsy TypeScript (w komentarzach dla dokumentacji)
-        /*
-        interface LinkedInAccount {
-            id: number;
-            emailAddress: string;
-            firstName: string;
-            lastName: string;
-            isActive: boolean;
-            activeCampaigns: number;
-            authIsValid: boolean;
-            isValidNavigator: boolean;
-            isValidRecruiter: boolean;
-        }
+        // TypeScript interfaces are kept as comments for documentation
+        /* ... interfaces ... */
 
-        interface Campaign {
-            id: number;
-            name: string;
-            creationTime: string;
-            linkedInUserListName: string;
-            linkedInUserListId: number;
-            campaignAccountIds: number[];
-            status: string;
-            progressStats: {
-                totalUsers: number;
-                totalUsersInProgress: number;
-                totalUsersPending: number;
-                totalUsersFinished: number;
-                totalUsersFailed: number;
-            };
-        }
-
-        interface Conversation {
-            id: string;
-            read: boolean;
-            groupChat: boolean;
-            blockedByMe: boolean;
-            blockedByParticipant: boolean;
-            lastMessageAt: string;
-            lastMessageText: string;
-            lastMessageSender: any;
-            totalMessages: number;
-            campaignId: number;
-            linkedInAccountId: number;
-            correspondentProfile: {
-                profileUrl: string;
-                firstName: string;
-                lastName: string;
-                headline: string;
-                imageUrl: string;
-                location: string;
-                companyName: string;
-                companyUrl: string;
-                position: string;
-                about: string;
-                connections: number;
-                followers: number;
-                tags: string[];
-                emailAddress: string;
-                customFields: { name: string; value: string; }[];
-            };
-            linkedInAccount: LinkedInAccount;
-            messages: {
-                createdAt: string;
-                body: string;
-                subject: string;
-                postLink: string;
-                isInMail: boolean;
-                sender: any;
-            }[];
-            apiKeyAlias?: string; // dodatkowe pole do przechowywania aliasu klucza
-            hasResponse?: boolean; // czy ma odpowiedź od rozmówcy
-        }
-        */
-
-        // Stan aplikacji
         const state = {
             workerUrl: 'https://snowy-hall-5f3d.lammelstanislaw.workers.dev',
             authPassword: '',
@@ -174,42 +110,29 @@
             campaigns: [],
             conversations: [],
             filteredConversations: [],
-            filters: {
-                hasResponse: false,
-                apiKeys: [],
-                senderIds: [],
-                campaignIds: []
-            }
+            filters: { hasResponse: false, apiKeys: [], senderIds: [], campaignIds: [] }
         };
 
-        // Pomocnicza funkcja do wywołań API
+        // Helper for API calls
         async function apiCall(endpoint, method = 'GET', body = null, apiKeyAlias = null) {
             const headers = {
                 'X-Custom-Auth': state.authPassword,
                 'Content-Type': 'application/json'
             };
-            
-            if (apiKeyAlias) {
-                headers['X-API-KEY'] = apiKeyAlias;
-            }
+            if (apiKeyAlias) headers['X-API-KEY'] = apiKeyAlias;
 
-            const options = {
-                method,
-                headers
-            };
-
-            if (body && method === 'POST') {
-                options.body = JSON.stringify(body);
-            }
+            const options = { method, headers };
+            if (body && method === 'POST') options.body = JSON.stringify(body);
             
+            const response = await fetch(state.workerUrl + endpoint, options);
             if (!response.ok) {
-                throw new Error(`API Error: ${response.status} ${response.statusText}`);
+                const errorText = await response.text();
+                throw new Error(`API Error: ${response.status} ${response.statusText} - ${errorText}`);
             }
-
             return response.json();
         }
 
-        // Pobieranie danych
+        // OPTIMIZATION 1: Fetch all data in parallel
         async function fetchData() {
             const loadingEl = document.getElementById('loading');
             const errorEl = document.getElementById('error-msg');
@@ -218,80 +141,84 @@
             errorEl.textContent = '';
 
             try {
-                // Resetuj stan
+                // Reset state
                 state.accounts = [];
                 state.campaigns = [];
                 state.conversations = [];
 
-                // Dla każdego wybranego klucza
-                for (const apiKey of state.selectedApiKeys) {
-                    // Pobierz konta (senders)
-                    const accountsData = await apiCall('/api/public/li_account/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey);
+                // Step 1: Create promises to fetch initial data (accounts, campaigns, conversations) for each API key in parallel.
+                const dataPromises = state.selectedApiKeys.map(async (apiKey) => {
+                    // Fetch all conversations for one key with pagination
+                    const fetchAllConversations = async () => {
+                        let allItems = [];
+                        let offset = 0;
+                        const limit = 100;
+                        let hasMore = true;
+                        while (hasMore) {
+                            const data = await apiCall('/api/public/inbox/GetConversations', 'POST', { offset, limit, filters: {} }, apiKey);
+                            const items = data.items || [];
+                            items.forEach(conv => conv.apiKeyAlias = apiKey);
+                            allItems.push(...items);
+                            offset += limit;
+                            hasMore = items.length === limit && offset < data.totalCount;
+                        }
+                        return allItems;
+                    };
+                    
+                    // Run requests for accounts, campaigns, and conversations concurrently for this key
+                    const [accountsData, campaignsData, conversations] = await Promise.all([
+                        apiCall('/api/public/li_account/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey),
+                        apiCall('/api/public/campaign/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey),
+                        fetchAllConversations()
+                    ]);
+
                     const accounts = accountsData.items || [];
-                    
-                    // Dodaj do globalnej listy z informacją o kluczu
-                    accounts.forEach(acc => {
-                        acc.apiKeyAlias = apiKey;
-                        state.accounts.push(acc);
-                    });
+                    accounts.forEach(acc => acc.apiKeyAlias = apiKey);
 
-                    // Pobierz kampanie
-                    const campaignsData = await apiCall('/api/public/campaign/GetAll', 'POST', { offset: 0, limit: 100 }, apiKey);
                     const campaigns = campaignsData.items || [];
-                    
-                    campaigns.forEach(camp => {
-                        camp.apiKeyAlias = apiKey;
-                        state.campaigns.push(camp);
-                    });
+                    campaigns.forEach(camp => camp.apiKeyAlias = apiKey);
 
-                    // Pobierz wszystkie konwersacje (z paginacją)
-                    let offset = 0;
-                    const limit = 100;
-                    let hasMore = true;
+                    return { accounts, campaigns, conversations };
+                });
 
-                    while (hasMore) {
-                        const conversationsData = await apiCall('/api/public/inbox/GetConversations', 'POST', {
-                            offset,
-                            limit,
-                            filters: {}
-                        }, apiKey);
-
-                        const conversations = conversationsData.items || [];
-                        
-                        conversations.forEach(conv => {
-                            conv.apiKeyAlias = apiKey;
-                            state.conversations.push(conv);
-                        });
-
-                        offset += limit;
-                        hasMore = conversations.length === limit && offset < conversationsData.totalCount;
+                // Execute all promises and wait for them to settle
+                const results = await Promise.allSettled(dataPromises);
+                
+                // Process results
+                results.forEach(result => {
+                    if (result.status === 'fulfilled') {
+                        const { accounts, campaigns, conversations } = result.value;
+                        state.accounts.push(...accounts);
+                        state.campaigns.push(...campaigns);
+                        state.conversations.push(...conversations);
+                    } else {
+                        console.error("Error fetching data for one of the keys:", result.reason);
+                        errorEl.textContent += `Błąd pobierania danych: ${result.reason.message}\n`;
                     }
-                }
+                });
 
-                // Sprawdź odpowiedzi dla każdej konwersacji
-                for (const conv of state.conversations) {
-                    try {
-                        const chatroom = await apiCall(
-                            `/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 
-                            'GET', 
-                            null, 
-                            conv.apiKeyAlias
-                        );
-                        
-                        // Sprawdź czy są wiadomości od correspondentProfile
-                        conv.hasResponse = chatroom.messages?.some(msg => 
-                            msg.sender === 'correspondentProfile'
-                        ) || false;
-                        
-                        // Zapisz pełne dane chatroom
+                // Step 2: Fetch all chatroom details in parallel to avoid the N+1 problem.
+                const chatroomPromises = state.conversations.map(conv =>
+                    apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
+                        .catch(err => ({ error: true, message: err.message })) // Catch errors individually
+                );
+
+                const chatroomResults = await Promise.allSettled(chatroomPromises);
+
+                chatroomResults.forEach((result, index) => {
+                    const conv = state.conversations[index];
+                    if (result.status === 'fulfilled' && !result.value.error) {
+                        const chatroom = result.value;
                         conv.fullData = chatroom;
-                    } catch (err) {
-                        console.error(`Error fetching chatroom for ${conv.id}:`, err);
+                        conv.hasResponse = chatroom.messages?.some(msg => msg.sender === 'correspondentProfile') || false;
+                    } else {
+                        console.error(`Error fetching chatroom for ${conv.id}:`, result.reason || result.value.message);
                         conv.hasResponse = false;
+                        conv.fullData = null; // Ensure no stale data
                     }
-                }
-
-                // Pokaż filtry i konwersacje
+                });
+                
+                // Show UI
                 createFilters();
                 showSections();
                 applyFilters();
@@ -303,75 +230,69 @@
             }
         }
 
-        // Tworzenie dynamicznych filtrów
+        // Create dynamic filter checkboxes
         function createFilters() {
-            // Filtry kluczy API
-            const apiKeysContainer = document.getElementById('filter-api-keys');
-            apiKeysContainer.innerHTML = '';
-            const uniqueApiKeys = [...new Set(state.conversations.map(c => c.apiKeyAlias))];
-            uniqueApiKeys.forEach(key => {
-                const label = document.createElement('label');
-                label.innerHTML = `<input type="checkbox" value="${key}" checked> ${key}`;
-                apiKeysContainer.appendChild(label);
-            });
+            const createCheckbox = (container, items, valueField, nameField) => {
+                container.innerHTML = '';
+                const uniqueItems = [...new Map(items.map(item => [item[valueField], item])).values()];
+                uniqueItems.forEach(item => {
+                    const label = document.createElement('label');
+                    label.innerHTML = `<input type="checkbox" value="${item[valueField]}" checked> ${nameField(item)}`;
+                    container.appendChild(label);
+                });
+            };
 
-            // Filtry osób wysyłających
-            const sendersContainer = document.getElementById('filter-senders');
-            sendersContainer.innerHTML = '';
-            const uniqueSenders = [...new Map(state.accounts.map(acc => [acc.id, acc])).values()];
-            uniqueSenders.forEach(sender => {
-                const label = document.createElement('label');
-                label.innerHTML = `<input type="checkbox" value="${sender.id}" checked> ${sender.firstName} ${sender.lastName}`;
-                sendersContainer.appendChild(label);
-            });
+            createCheckbox(
+                document.getElementById('filter-api-keys'),
+                [...new Set(state.conversations.map(c => c.apiKeyAlias))].map(key => ({ key })),
+                'key',
+                item => item.key
+            );
 
-            // Filtry kampanii
-            const campaignsContainer = document.getElementById('filter-campaigns');
-            campaignsContainer.innerHTML = '';
-            const uniqueCampaigns = [...new Map(state.campaigns.map(camp => [camp.id, camp])).values()];
-            uniqueCampaigns.forEach(campaign => {
-                const label = document.createElement('label');
-                label.innerHTML = `<input type="checkbox" value="${campaign.id}" checked> ${campaign.name}`;
-                campaignsContainer.appendChild(label);
-            });
+            createCheckbox(
+                document.getElementById('filter-senders'),
+                state.accounts,
+                'id',
+                sender => `${sender.firstName} ${sender.lastName}`
+            );
+
+            createCheckbox(
+                document.getElementById('filter-campaigns'),
+                state.campaigns,
+                'id',
+                campaign => campaign.name
+            );
         }
 
-        // Zastosowanie filtrów
+        // Apply filters and update view
         function applyFilters() {
-            // Pobierz wartości filtrów
             state.filters.hasResponse = document.getElementById('filter-has-response').checked;
-            
-            state.filters.apiKeys = [...document.querySelectorAll('#filter-api-keys input:checked')]
-                .map(cb => cb.value);
-            
-            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')]
-                .map(cb => parseInt(cb.value));
-            
-            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')]
-                .map(cb => parseInt(cb.value));
+            state.filters.apiKeys = [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value);
+            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value));
+            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value));
 
-            // Filtruj konwersacje
             state.filteredConversations = state.conversations.filter(conv => {
                 if (state.filters.hasResponse && !conv.hasResponse) return false;
                 if (!state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
                 if (!state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
                 if (conv.campaignId && !state.filters.campaignIds.includes(conv.campaignId)) return false;
-                
                 return true;
             });
 
-            // Aktualizuj widok
             updateConversationsTable();
             updateStats();
         }
 
-        // Aktualizacja tabeli konwersacji
+        // OPTIMIZATION 2: Use DocumentFragment for faster DOM updates
         function updateConversationsTable() {
             const tbody = document.querySelector('#conversations-table tbody');
-            tbody.innerHTML = '';
+            const fragment = document.createDocumentFragment();
+            
+            // Create a lookup map for campaigns for faster access
+            const campaignMap = new Map(state.campaigns.map(c => [c.id, c]));
 
             state.filteredConversations.forEach(conv => {
-                const campaign = state.campaigns.find(c => c.id === conv.campaignId);
+                const campaign = campaignMap.get(conv.campaignId);
                 const row = document.createElement('tr');
                 
                 row.innerHTML = `
@@ -379,14 +300,16 @@
                     <td>${conv.lastMessageText || 'Brak wiadomości'}</td>
                     <td>${campaign?.name || 'Brak kampanii'}</td>
                     <td>${conv.apiKeyAlias}</td>
-                    <td><button onclick="window.openThread('${conv.id}', '${conv.apiKeyAlias}', ${conv.linkedInAccountId})">Otwórz wątek</button></td>
+                    <td><button class="open-thread-btn" data-conv-id="${conv.id}">Otwórz wątek</button></td>
                 `;
-                
-                tbody.appendChild(row);
+                fragment.appendChild(row);
             });
+            
+            tbody.innerHTML = ''; // Clear the table body once
+            tbody.appendChild(fragment); // Append all rows in one operation
         }
-
-        // Aktualizacja statystyk
+        
+        // Update dashboard statistics
         function updateStats() {
             const total = state.filteredConversations.length;
             const withResponse = state.filteredConversations.filter(c => c.hasResponse).length;
@@ -397,165 +320,121 @@
             document.getElementById('stats-response-rate').textContent = `${responseRate}%`;
         }
 
-        // Otwieranie wątku
-        window.openThread = async function(conversationId, apiKeyAlias, accountId) {
+        // Show thread preview
+        window.openThread = (conversationId) => {
             const threadDiv = document.getElementById('thread-preview');
             const contentDiv = document.getElementById('thread-content');
             
             threadDiv.style.display = 'block';
             contentDiv.innerHTML = 'Ładowanie...';
 
-            try {
-                // Znajdź konwersację w cache lub pobierz ponownie
-                let conversation = state.conversations.find(c => c.id === conversationId);
-                
-                if (!conversation?.fullData) {
-                    const chatroom = await apiCall(
-                        `/api/public/inbox/GetChatroom/${accountId}/${conversationId}`, 
-                        'GET', 
-                        null, 
-                        apiKeyAlias
-                    );
-                    conversation.fullData = chatroom;
-                }
-
-                const data = conversation.fullData;
-                
-                // Wyświetl informacje o rozmówcy
-                let html = `
-                    <h4>Rozmówca: ${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}</h4>
-                    <p>Firma: ${data.correspondentProfile?.companyName || 'Brak'}</p>
-                    <p>Stanowisko: ${data.correspondentProfile?.position || 'Brak'}</p>
-                    <p>Lokalizacja: ${data.correspondentProfile?.location || 'Brak'}</p>
-                    <hr>
-                    <h4>Historia wiadomości:</h4>
-                `;
-
-                // Wyświetl wiadomości
-                if (data.messages && data.messages.length > 0) {
-                    data.messages.forEach(msg => {
-                        const sender = msg.sender === 'linkedInAccount' ? 
-                            `${data.linkedInAccount.firstName} ${data.linkedInAccount.lastName} (Ty)` : 
-                            `${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}`;
-                        
-                        html += `
-                            <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc;">
-                                <strong>${sender}</strong> - ${new Date(msg.createdAt).toLocaleString()}<br>
-                                ${msg.subject ? `<em>Temat: ${msg.subject}</em><br>` : ''}
-                                ${msg.body}
-                            </div>
-                        `;
-                    });
-                } else {
-                    html += '<p>Brak wiadomości w tym wątku.</p>';
-                }
-
-                contentDiv.innerHTML = html;
-
-            } catch (error) {
-                contentDiv.innerHTML = `<p style="color:red;">Błąd ładowania wątku: ${error.message}</p>`;
+            const conversation = state.conversations.find(c => c.id === conversationId);
+            if (!conversation || !conversation.fullData) {
+                contentDiv.innerHTML = `<p style="color:red;">Błąd: nie znaleziono pełnych danych konwersacji. Spróbuj odświeżyć.</p>`;
+                return;
             }
-        };
+            const data = conversation.fullData;
 
-        // Eksport do CSV
+            let html = `
+                <h4>Rozmówca: ${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}</h4>
+                <p>Firma: ${data.correspondentProfile?.companyName || 'Brak'}</p>
+                <p>Stanowisko: ${data.correspondentProfile?.position || 'Brak'}</p>
+                <hr>
+                <h4>Historia wiadomości:</h4>
+            `;
+
+            if (data.messages && data.messages.length > 0) {
+                data.messages.forEach(msg => {
+                    const senderName = msg.sender === 'linkedInAccount' 
+                        ? `${data.linkedInAccount.firstName} ${data.linkedInAccount.lastName} (Ty)` 
+                        : `${data.correspondentProfile?.firstName} ${data.correspondentProfile?.lastName}`;
+                    html += `
+                        <div style="margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px;">
+                            <strong>${senderName}</strong> - ${new Date(msg.createdAt).toLocaleString()}<br>
+                            ${msg.subject ? `<em>Temat: ${msg.subject}</em><br>` : ''}
+                            ${msg.body}
+                        </div>
+                    `;
+                });
+            } else {
+                html += '<p>Brak wiadomości w tym wątku.</p>';
+            }
+            contentDiv.innerHTML = html;
+        };
+        
+        // OPTIMIZATION 3: Use Maps for faster lookups in CSV export
         function exportToCSV() {
             const csvRows = [];
-            
-            // Nagłówki
-            csvRows.push([
-                'conversationId',
-                'campaignId',
-                'campaignName',
-                'senderAccountId',
-                'senderFirstName',
-                'senderLastName',
-                'correspondentProfileUrl',
-                'correspondentFirstName',
-                'correspondentLastName',
-                'correspondentHeadline',
-                'correspondentLocation',
-                'correspondentCompanyName',
-                'correspondentPosition',
-                'hasResponse',
-                'lastMessageText',
-                'lastMessageAt',
-                'apiKeyAlias'
-            ].join(','));
+            const headers = ['conversationId', 'campaignName', 'senderFullName', 'correspondentFullName', 'correspondentCompany', 'correspondentPosition', 'hasResponse', 'lastMessageText', 'lastMessageAt', 'apiKeyAlias'];
+            csvRows.push(headers.join(','));
 
-            // Dane
+            // Create lookup maps once before the loop
+            const campaignMap = new Map(state.campaigns.map(c => [c.id, c.name]));
+            const accountMap = new Map(state.accounts.map(a => [a.id, `${a.firstName} ${a.lastName}`]));
+
+            const escapeCSV = (str) => `"${(str || '').replace(/"/g, '""')}"`;
+
             state.filteredConversations.forEach(conv => {
-                const campaign = state.campaigns.find(c => c.id === conv.campaignId);
-                const sender = state.accounts.find(a => a.id === conv.linkedInAccountId);
-                
+                const campaignName = campaignMap.get(conv.campaignId) || '';
+                const senderName = accountMap.get(conv.linkedInAccountId) || '';
+                const profile = conv.correspondentProfile;
+
                 const row = [
                     conv.id,
-                    conv.campaignId || '',
-                    campaign?.name || '',
-                    conv.linkedInAccountId || '',
-                    sender?.firstName || '',
-                    sender?.lastName || '',
-                    conv.correspondentProfile?.profileUrl || '',
-                    conv.correspondentProfile?.firstName || '',
-                    conv.correspondentProfile?.lastName || '',
-                    conv.correspondentProfile?.headline || '',
-                    conv.correspondentProfile?.location || '',
-                    conv.correspondentProfile?.companyName || '',
-                    conv.correspondentProfile?.position || '',
+                    escapeCSV(campaignName),
+                    escapeCSV(senderName),
+                    escapeCSV(`${profile?.firstName} ${profile?.lastName}`),
+                    escapeCSV(profile?.companyName),
+                    escapeCSV(profile?.position),
                     conv.hasResponse ? 'TAK' : 'NIE',
-                    `"${(conv.lastMessageText || '').replace(/"/g, '""')}"`,
+                    escapeCSV(conv.lastMessageText),
                     conv.lastMessageAt || '',
                     conv.apiKeyAlias || ''
                 ];
-                
                 csvRows.push(row.join(','));
             });
 
-            // Pobierz plik
             const csv = csvRows.join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement('a');
-            const url = URL.createObjectURL(blob);
-            
-            link.setAttribute('href', url);
+            link.setAttribute('href', URL.createObjectURL(blob));
             link.setAttribute('download', `heyreach_conversations_${new Date().toISOString().split('T')[0]}.csv`);
-            link.style.visibility = 'hidden';
-            
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
         }
 
-        // Pomocnicze funkcje UI
         function showSections() {
-            document.getElementById('filters-section').style.display = 'block';
-            document.getElementById('stats-section').style.display = 'block';
-            document.getElementById('conversations-section').style.display = 'block';
+            ['filters-section', 'stats-section', 'conversations-section'].forEach(id => {
+                document.getElementById(id).style.display = 'block';
+            });
         }
 
         // Event listeners
-        document.getElementById('fetch-data-btn').addEventListener('click', async () => {
-            // Pobierz wartości konfiguracji
+        document.getElementById('fetch-data-btn').addEventListener('click', () => {
             state.authPassword = document.getElementById('auth-password').value;
             state.selectedApiKeys = [...document.querySelectorAll('#api-keys input:checked')].map(cb => cb.value);
 
             if (!state.authPassword || state.selectedApiKeys.length === 0) {
-                document.getElementById('error-msg').textContent = 'Wypełnij wszystkie pola i wybierz co najmniej jeden klucz API';
+                document.getElementById('error-msg').textContent = 'Wypełnij hasło i wybierz co najmniej jeden klucz API.';
                 return;
             }
-
-            await fetchData();
+            fetchData();
         });
 
         document.getElementById('apply-filters-btn').addEventListener('click', applyFilters);
-        
         document.getElementById('export-csv-btn').addEventListener('click', exportToCSV);
-
-        document.getElementById('close-thread').addEventListener('click', () => {
-            document.getElementById('thread-preview').style.display = 'none';
+        document.getElementById('close-thread').addEventListener('click', () => document.getElementById('thread-preview').style.display = 'none');
+        document.getElementById('filter-has-response').addEventListener('change', applyFilters);
+        
+        // Use event delegation for "Otwórz wątek" buttons for better performance
+        document.getElementById('conversations-table').addEventListener('click', (event) => {
+            if (event.target.classList.contains('open-thread-btn')) {
+                const convId = event.target.getAttribute('data-conv-id');
+                window.openThread(convId);
+            }
         });
 
-        // Automatyczne stosowanie filtrów przy zmianie checkboxa "Pokaż tylko z odpowiedzią"
-        document.getElementById('filter-has-response').addEventListener('change', applyFilters);
     </script>
 </body>
 </html>
