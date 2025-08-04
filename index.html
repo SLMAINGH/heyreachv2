@@ -197,45 +197,11 @@
                     }
                 });
 
-                // Step 2: Fetch chatroom details with rate limiting (max 10 per 2 seconds)
-                const fetchChatroomsWithThrottling = async () => {
-                    const results = [];
-                    const batchSize = 8; // Under the 10/2s limit
-                    const delay = 2000; // 2 seconds between batches
-                    
-                    for (let i = 0; i < state.conversations.length; i += batchSize) {
-                        const batch = state.conversations.slice(i, i + batchSize);
-                        console.log(`Processing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(state.conversations.length/batchSize)}`);
-                        
-                        const batchPromises = batch.map(conv =>
-                            apiCall(`/api/public/inbox/GetChatroom/${conv.linkedInAccountId}/${conv.id}`, 'GET', null, conv.apiKeyAlias)
-                                .catch(err => ({ error: true, message: err.message }))
-                        );
-                        
-                        const batchResults = await Promise.allSettled(batchPromises);
-                        results.push(...batchResults);
-                        
-                        // Wait before next batch (except for the last batch)
-                        if (i + batchSize < state.conversations.length) {
-                            await new Promise(resolve => setTimeout(resolve, delay));
-                        }
-                    }
-                    return results;
-                };
-
-                const chatroomResults = await fetchChatroomsWithThrottling();
-
-                chatroomResults.forEach((result, index) => {
-                    const conv = state.conversations[index];
-                    if (result.status === 'fulfilled' && !result.value.error) {
-                        const chatroom = result.value;
-                        conv.fullData = chatroom;
-                        conv.hasResponse = chatroom.messages?.some(msg => msg.sender === 'correspondentProfile') || false;
-                    } else {
-                        console.error(`Error fetching chatroom for ${conv.id}:`, result.reason || result.value.message);
-                        conv.hasResponse = false;
-                        conv.fullData = null; // Ensure no stale data
-                    }
+                // Skip chatroom fetching for now - just set hasResponse to false for all conversations
+                console.log(`Found ${state.conversations.length} conversations, setting hasResponse=false for all`);
+                state.conversations.forEach(conv => {
+                    conv.hasResponse = false;
+                    conv.fullData = null;
                 });
                 
                 // Show UI
