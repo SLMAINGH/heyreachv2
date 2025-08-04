@@ -10,9 +10,6 @@
     <div id="config-section">
         <h2>Konfiguracja</h2>
         <div>
-            <label>Worker URL: <input type="text" id="worker-url" placeholder="https://your-worker.workers.dev"></label>
-        </div>
-        <div>
             <label>Hasło (X-Custom-Auth): <input type="password" id="auth-password" placeholder="Wprowadź hasło"></label>
         </div>
         
@@ -170,7 +167,7 @@
 
         // Stan aplikacji
         const state = {
-            workerUrl: '',
+            workerUrl: 'https://snowy-hall-5f3d.lammelstanislaw.workers.dev',
             authPassword: '',
             selectedApiKeys: [],
             accounts: [],
@@ -204,8 +201,6 @@
             if (body && method === 'POST') {
                 options.body = JSON.stringify(body);
             }
-
-            const response = await fetch(`${state.workerUrl}${endpoint}`, options);
             
             if (!response.ok) {
                 throw new Error(`API Error: ${response.status} ${response.statusText}`);
@@ -540,11 +535,10 @@
         // Event listeners
         document.getElementById('fetch-data-btn').addEventListener('click', async () => {
             // Pobierz wartości konfiguracji
-            state.workerUrl = document.getElementById('worker-url').value;
             state.authPassword = document.getElementById('auth-password').value;
             state.selectedApiKeys = [...document.querySelectorAll('#api-keys input:checked')].map(cb => cb.value);
 
-            if (!state.workerUrl || !state.authPassword || state.selectedApiKeys.length === 0) {
+            if (!state.authPassword || state.selectedApiKeys.length === 0) {
                 document.getElementById('error-msg').textContent = 'Wypełnij wszystkie pola i wybierz co najmniej jeden klucz API';
                 return;
             }
