@@ -278,17 +278,45 @@
             state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value)).filter(id => !isNaN(id));
             state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value)).filter(id => !isNaN(id));
 
+            console.log('Applying filters:', state.filters);
+            console.log('Total conversations:', state.conversations.length);
+
             state.filteredConversations = state.conversations.filter(conv => {
-                if (state.filters.hasResponse && !conv.hasResponse) return false;
-                if (state.filters.apiKeys.length > 0 && !state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
-                if (state.filters.senderIds.length > 0 && !state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
-                if (state.filters.campaignIds.length > 0) {
-                    if (!conv.campaignId) return false; // Odrzuć konwersacje bez kampanii
-                    if (!state.filters.campaignIds.includes(conv.campaignId)) return false; // Odrzuć inne kampanie
+                console.log('Filtering conversation:', conv.id, {
+                    hasResponse: conv.hasResponse,
+                    apiKeyAlias: conv.apiKeyAlias,
+                    linkedInAccountId: conv.linkedInAccountId,
+                    campaignId: conv.campaignId
+                });
+                
+                if (state.filters.hasResponse && !conv.hasResponse) {
+                    console.log('Filtered out - no response');
+                    return false;
                 }
+                if (state.filters.apiKeys.length > 0 && !state.filters.apiKeys.includes(conv.apiKeyAlias)) {
+                    console.log('Filtered out - api key not selected');
+                    return false;
+                }
+                if (state.filters.senderIds.length > 0 && !state.filters.senderIds.includes(conv.linkedInAccountId)) {
+                    console.log('Filtered out - sender not selected');
+                    return false;
+                }
+                if (state.filters.campaignIds.length > 0) {
+                    if (!conv.campaignId) {
+                        console.log('Filtered out - no campaign ID when campaigns selected');
+                        return false; // Odrzuć konwersacje bez kampanii
+                    }
+                    if (!state.filters.campaignIds.includes(conv.campaignId)) {
+                        console.log('Filtered out - campaign not selected');
+                        return false; // Odrzuć inne kampanie
+                    }
+                }
+                console.log('Conversation passed filters');
                 return true;
             });
 
+            console.log('Filtered conversations:', state.filteredConversations.length);
+            
             updateConversationsTable();
             updateStats();
         }
