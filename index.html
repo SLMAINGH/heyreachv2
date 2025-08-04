@@ -237,7 +237,14 @@
                 const uniqueItems = [...new Map(items.map(item => [item[valueField], item])).values()];
                 uniqueItems.forEach(item => {
                     const label = document.createElement('label');
-                    label.innerHTML = `<input type="checkbox" value="${item[valueField]}" checked> ${nameField(item)}`;
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.value = item[valueField];
+                    checkbox.checked = true;
+                    checkbox.addEventListener('change', applyFilters);
+                    
+                    label.appendChild(checkbox);
+                    label.appendChild(document.createTextNode(' ' + nameField(item)));
                     container.appendChild(label);
                 });
             };
@@ -273,9 +280,10 @@
 
             state.filteredConversations = state.conversations.filter(conv => {
                 if (state.filters.hasResponse && !conv.hasResponse) return false;
-                if (!state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
-                if (!state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
-                if (conv.campaignId && !state.filters.campaignIds.includes(conv.campaignId)) return false;
+                if (state.filters.apiKeys.length > 0 && !state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
+                if (state.filters.senderIds.length > 0 && !state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
+                if (state.filters.campaignIds.length > 0 && conv.campaignId && !state.filters.campaignIds.includes(conv.campaignId)) return false;
+                if (state.filters.campaignIds.length > 0 && !conv.campaignId) return false;
                 return true;
             });
 
