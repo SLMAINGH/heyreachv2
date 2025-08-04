@@ -275,15 +275,17 @@
         function applyFilters() {
             state.filters.hasResponse = document.getElementById('filter-has-response').checked;
             state.filters.apiKeys = [...document.querySelectorAll('#filter-api-keys input:checked')].map(cb => cb.value);
-            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value));
-            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value));
+            state.filters.senderIds = [...document.querySelectorAll('#filter-senders input:checked')].map(cb => parseInt(cb.value)).filter(id => !isNaN(id));
+            state.filters.campaignIds = [...document.querySelectorAll('#filter-campaigns input:checked')].map(cb => parseInt(cb.value)).filter(id => !isNaN(id));
 
             state.filteredConversations = state.conversations.filter(conv => {
                 if (state.filters.hasResponse && !conv.hasResponse) return false;
                 if (state.filters.apiKeys.length > 0 && !state.filters.apiKeys.includes(conv.apiKeyAlias)) return false;
                 if (state.filters.senderIds.length > 0 && !state.filters.senderIds.includes(conv.linkedInAccountId)) return false;
-                if (state.filters.campaignIds.length > 0 && conv.campaignId && !state.filters.campaignIds.includes(conv.campaignId)) return false;
-                if (state.filters.campaignIds.length > 0 && !conv.campaignId) return false;
+                if (state.filters.campaignIds.length > 0) {
+                    if (!conv.campaignId) return false; // Odrzuć konwersacje bez kampanii
+                    if (!state.filters.campaignIds.includes(conv.campaignId)) return false; // Odrzuć inne kampanie
+                }
                 return true;
             });
 
